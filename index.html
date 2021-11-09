@@ -1,0 +1,113 @@
+<!doctype html>
+
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>A Basic HTML5 Template</title>
+    <meta name="description" content="A simple HTML5 Template for new projects.">
+    <meta name="author" content="SitePoint">
+
+</head>
+
+<body>
+    <div>
+        <input id="repository" type="text" style="width: 50em"
+            title="Tip: enter a private repo URL to see the credentialManager plugin prompt for a password." />
+        <button type="button" id="cloneButton">Clone</button>
+    </div>
+    <div>
+        <progress id="progress" value="0"></progress>
+        <span id="progress-txt" style="font-family: monospace;"></span>
+    </div>
+    <output id="log" style="white-space: pre; font-family: monospace;"></output>
+
+    <script src="https://unpkg.com/magic-portal"></script>
+    <script>
+        const $ = id => document.getElementById(id);
+
+        let worker = new Worker("./worker.js");
+        const portal = new MagicPortal(worker);
+        worker.addEventListener("message", ({ data }) => console.log(data));
+
+        const mainThread = {
+            async print(message) {
+                let text = $("log").textContent;
+                if (message.endsWith("\r")) {
+                    // overwrite last line
+                    text = text.trim().replace(/.+$/, "");
+                }
+                text += message + "\n";
+                $("log").textContent = text;
+            },
+            async progress(evt) {
+                $("progress-txt").textContent = evt.phase;
+                $("progress").value = evt.total ? evt.loaded / evt.total : 0.5;
+                return;
+            },
+            async fill(url) {
+                let username = window.prompt("Username:");
+                let password = window.prompt("Password:");
+                return { username, password };
+            },
+            async rejected({ url, auth }) {
+                window.alert("Authentication rejected");
+                return;
+            }
+        };
+        portal.set("mainThread", mainThread, {
+            void: ["print", "progress", "rejected"]
+        });
+
+        async function doCloneAndStuff() {
+            $("log").textContent = "CLONE:\n";
+
+            await workerThread.setDir("/fs");
+
+            try {
+                await workerThread.clone({
+                    corsProxy: "https://cors.isomorphic-git.org",
+                    url: $("repository").value
+                });
+            } catch (e) {
+                console.log('got error', e)
+            }
+        }
+
+        (async () => {
+            const workerThread = await portal.get("workerThread");
+
+            $("log").textContent += "ready\n";
+            $("repository").value = "https://github.com/isomorphic-git/isomorphic-git";
+            $("repository").addEventListener("keydown", e => {
+                if (e.key === "Enter") {
+                    doCloneAndStuff();
+                }
+            });
+
+            $("cloneButton").addEventListener("click", doCloneAndStuff);
+
+            window.workerThread = workerThread;
+            window.worker = worker;
+            console.log(workerThread);
+        })();
+    </script>
+    <script>
+        var scope = location.pathname.replace(/\/[^\/]+$/, '/');
+        if ('serviceWorker' in navigator) {
+            if (!scope.match(/__browserfs__/)) {
+                console.log(`service worker available`);
+                try {
+                    navigator.serviceWorker.register(`sw.js`, { scope: '/' });
+                    console.log(`service worker registered`)
+                } catch (e) {
+                    console.log(`service worker not registered`)
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>
